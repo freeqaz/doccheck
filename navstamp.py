@@ -231,9 +231,14 @@ def plan(root: str, scope: str, gloss_override: str = "",
     hubdists = {h: docgraph._bfs([h], edges, known)
                 for h in doccheck.HUBS if h in known}
 
+    # Scope is a path prefix, not a string prefix: scope "sub" must not reach
+    # sibling "subway.md". A bare startswith would, and the whole safety story
+    # is that one stream never writes into another stream's files.
+    base = scope.rstrip("/")
+
     rows = []
     for f in files:
-        if not (f == scope or f.startswith(scope.rstrip("/") + "/") or f.startswith(scope)):
+        if not (f == base or f.startswith(base + "/")):
             continue
         reason = skippable(f)
         if reason:

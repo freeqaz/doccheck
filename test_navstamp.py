@@ -118,3 +118,26 @@ def test_out_of_scope_files_are_not_planned(tmp_path):
     root = _tree(tmp_path)
     planned = {r["file"] for r in navstamp.plan(str(root), "sub")}
     assert "README.md" not in planned
+
+
+def test_scope_is_a_path_prefix_not_a_string_prefix(tmp_path):
+    """Scope "sub" owns sub/, never the sibling subway.md that merely spells like it.
+
+    Sharing a string prefix with another stream's file is not sharing a
+    directory with it, and stamping it is the cross-stream write --scope exists
+    to prevent.
+    """
+    root = _tree(tmp_path)
+    (root / "README.md").write_text(
+        "# root\n\n"
+        "| [note](sub/note.md) | establishes the thing this note is about |\n"
+        "| [subway](subway.md) | establishes the other thing entirely here |\n")
+    (root / "subway.md").write_text("# subway\n\nA sibling that only spells alike.\n")
+
+    # Both are stampable on their own, so excluding one is not a vacuous check.
+    assert {r["file"] for r in navstamp.plan(str(root), "subway.md")} == {"subway.md"}
+
+    planned = {r["file"] for r in navstamp.plan(str(root), "sub")}
+    assert planned == {"sub/note.md"}
+    assert {r["file"] for r in navstamp.plan(str(root), "sub/")} == planned
+    assert {r["file"] for r in navstamp.plan(str(root), "sub/note.md")} == {"sub/note.md"}
