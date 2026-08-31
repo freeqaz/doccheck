@@ -4,12 +4,20 @@ Structural linting and navigability metrics for **large** Markdown
 documentation trees — the checks a human reviewer cannot do once a docs tree
 passes a few hundred files.
 
+Three single-file tools, standard library only:
+
+| tool | question it answers | detail |
+| --- | --- | --- |
+| [`doccheck.py`](doccheck.py) | is this doc broken? | [docs/checks.md](docs/checks.md) — every check category and its exemption rules |
+| [`docgraph.py`](docgraph.py) | can a reader who landed here find their way? | [docs/docgraph.md](docs/docgraph.md) — metric definitions and baseline workflow |
+| [`navstamp.py`](navstamp.py) | how do I add the breadcrumbs doccheck measures? | [docs/navstamp.md](docs/navstamp.md) — scope semantics and gloss sources |
+
 **Status: alpha.** Battle-used, not battle-polished. These tools ran daily
 against documentation trees of ~2,400 and ~3,000 Markdown files (5,000+
-combined) inside a private research monorepo, but they were just extracted from
-it, so expect rough edges: generic placeholder names where project-specific
-vocabulary used to be, and defaults that reflect one project's conventions more
-than they should.
+combined) inside a private research monorepo, but they were recently extracted
+from it, so expect rough edges: generic placeholder names where
+project-specific vocabulary used to be, and defaults that reflect one
+project's conventions more than they should.
 
 ## Why
 
@@ -40,6 +48,63 @@ carrier is the dated file's own directory index (`README.md`/`INDEX.md`) —
 that index *is* the living surface everyone else should point at, so it is
 exempt.
 
+## Install
+
+Zero runtime dependencies — each tool is one file, so the smallest install is
+no install at all:
+
+```sh
+python3 doccheck.py --root /path/to/docs
+```
+
+(`docgraph.py` and `navstamp.py` import `doccheck.py`, so keep the three files
+together.)
+
+Or install the console scripts:
+
+```sh
+pip install .
+doccheck --root /path/to/docs
+```
+
+Requires Python >= 3.9. `git` on `PATH` is optional: with it, links to
+deliberately gitignored artifacts are not reported as broken; without it, the
+checks degrade cleanly to "nothing is ignored".
+
+## Quick start
+
+```sh
+doccheck --root /path/to/docs                  # all checks, human output
+doccheck --root /path/to/docs --only links,anchors
+doccheck --root /path/to/docs --json           # machine-readable
+```
+
+`--root` defaults to the current directory. The exit code is non-zero **only**
+for categories named in `--fail-on`, so the judgement-dependent checks can run
+without blocking CI:
+
+```sh
+doccheck --root . --fail-on links,rootpath,anchors,assets,index,latestptr
+```
+
+Exit codes: `0` clean (or findings only in ungated categories), `1` findings
+in a `--fail-on` category, `2` usage or config error. Both `--only` and
+`--fail-on` are validated against the known category list **before** the tree
+walk — a typo'd category name is an error, not a gate that silently passes:
+
+```console
+$ doccheck --root . --fail-on lnks
+doccheck: --fail-on names no known check category: lnks
+  known: links, rootpath, anchors, assets, index, phrases, abspath, latestptr, stale, unreachable, coverage, size, orphans, nav, gloss, hubdist
+  (--fail-on gates the exit code on categories, e.g. 'links,anchors')
+$ echo $?
+2
+```
+
+Other flags: `--max-lines N` (default 600, the `size` threshold), `--limit N`
+(findings shown per category, default 25), `--dump-config` (print the
+effective settings as JSON and exit).
+
 ## What it checks
 
 Deterministic — a finding is always a defect, reasonable to gate in CI:
@@ -64,7 +129,7 @@ Reported but never gated — a finding here can be legitimate mid-workstream:
 | `coverage` | docs their own directory's index does not list |
 | `size` | docs over `--max-lines` |
 | `stale` | state markers that outlived their ruling — **configurable, empty by default** |
-| `nav` | active doc with no `**Hub:**` breadcrumb header |
+| `nav` | active doc with no breadcrumb header (`**Hub:**` by default, configurable) |
 | `gloss` | index row whose link carries no reason to follow it |
 | `hubdist` | active doc more than N hops from any hub |
 
@@ -77,28 +142,8 @@ Frozen provenance (`archive/`, dated readouts) is exempt from the checks that
 would ask you to edit it. Allow-lists match over a **window**, not a line,
 because hard-wrapped prose routinely puts the exculpating clause on the next
 line — and a lint that pushes an author to mangle correct prose is worse than
-one that misses a case.
-
-## Quick start
-
-No dependencies beyond the standard library. Point it at a docs tree:
-
-```sh
-python3 doccheck.py --root /path/to/docs            # all checks, human output
-python3 doccheck.py --root /path/to/docs --only links,anchors
-python3 doccheck.py --root /path/to/docs --json     # machine-readable
-```
-
-`--root` defaults to the current directory. The exit code is non-zero **only**
-for categories named in `--fail-on`, so the judgement-dependent checks can run
-without blocking CI:
-
-```sh
-python3 doccheck.py --root . --fail-on links,rootpath,anchors,assets,index,latestptr
-```
-
-Other flags: `--max-lines N` (default 600, the `size` threshold), `--limit N`
-(findings shown per category, default 25), `--dump-config`.
+one that misses a case. The full rules are in
+[docs/checks.md](docs/checks.md), with each check's exemptions spelled out.
 
 ## Configuration
 
@@ -107,7 +152,9 @@ which path markers mean "frozen provenance", and the retired-wording and
 staleness pattern lists — lives in a JSON config, **not** in the code.
 `.doccheck.json` beside the docs root is picked up automatically; `--config
 PATH` names one explicitly, `--no-config` ignores both, and `--dump-config`
-prints the effective settings.
+prints the effective settings. All three tools share the config and the
+`--root`/`--config`/`--no-config` flags, so the linter, the metrics and the
+stamper can never disagree about what a hub or a breadcrumb token is.
 
 ```json
 {
@@ -132,17 +179,20 @@ configure it. An unknown config key is an error rather than a silent no-op: a
 typo'd key disables the rule its author meant to write, and that reads as a
 clean tree.
 
+[docs/configuration.md](docs/configuration.md) lists every key, its default
+and its blast radius, plus the Python API.
+
 ## The three tools
 
-- **`doccheck.py`** — the linter above. Also the shared library: link parsing,
+- **`doccheck`** — the linter above. Also the shared library: link parsing,
   file discovery and configuration live here, and the other two import them so
   the three cannot disagree about what a link is.
-- **`docgraph.py`** — navigability *metrics*, not defects. `doccheck` answers
+- **`docgraph`** — navigability *metrics*, not defects. `doccheck` answers
   "is this doc broken?"; this answers "can a reader who landed here find their
   way?" — orphans, sinks (no outbound link), hop distance from the nearest hub,
   and `scancost`: how many links a reader must scan on the shortest path from a
   root. Use it as a before/after instrument when restructuring.
-- **`navstamp.py`** — inserts the one-line `**Hub:** …` breadcrumb header that
+- **`navstamp`** — inserts the one-line `**Hub:** …` breadcrumb header that
   `nav` and `hubdist` measure. Purely additive (one line plus a blank separator
   at line 1, no other byte rewritten), idempotent, and `--scope` is
   **mandatory** — there is no whole-tree mode, because an unscoped pass rewrites
@@ -153,7 +203,8 @@ clean tree.
 ## Tests
 
 ```sh
-python3 -m venv .venv && .venv/bin/pip install pytest
+python3 -m venv .venv
+.venv/bin/pip install -e ".[test]"
 .venv/bin/python -m pytest -q
 ```
 
