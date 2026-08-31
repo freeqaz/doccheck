@@ -5,6 +5,10 @@ The header shape is the one doccheck's `nav` and `hubdist` checks measure:
 
     **Hub:** [<hub>](<rel>) › [<tier-2 index>](<rel>) — <5-12 words>
 
+`**Hub:**` is only the default: the token and the window scanned for it follow
+doccheck's `nav_token` / `nav_scan_lines` config keys, so the stamper and the
+`nav` check can never disagree about what a stamped file looks like.
+
 `--scope` is MANDATORY and there is no way to ask for the whole tree. Several
 doc streams typically share one working tree at once, so an unscoped pass would
 rewrite every file every other stream is mid-edit on, and the recovery is a
@@ -41,7 +45,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import doccheck  # noqa: E402
 import docgraph  # noqa: E402
 
-STAMP_TOKEN = "**Hub:**"
+#: Re-exported from doccheck and forwarded live (PEP 562) rather than bound at
+#: import: `nav_token` is configurable, and a stale copy here would stamp one
+#: token while doccheck's `nav` check reported another. Internal uses must spell
+#: `doccheck.NAV_TOKEN` — a bare name would miss this hook and raise NameError.
+_FORWARDED = {"STAMP_TOKEN": "NAV_TOKEN"}
+
+
+def __getattr__(name):
+    if name in _FORWARDED:
+        return getattr(doccheck, _FORWARDED[name])
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 GLOSS_MAX_WORDS = 12
 _H1_RE = re.compile(r"^#\s+(.*?)\s*$")
@@ -230,7 +245,7 @@ def plan(root: str, scope: str, gloss_override: str = "",
         except OSError as exc:
             rows.append({"file": f, "action": "skip", "why": f"unreadable: {exc}"})
             continue
-        if any(STAMP_TOKEN in l for l in lines[:5]):
+        if any(doccheck.NAV_TOKEN in l for l in lines[:doccheck.NAV_SCAN_LINES]):
             rows.append({"file": f, "action": "skip", "why": "already stamped"})
             continue
 
@@ -262,7 +277,7 @@ def plan(root: str, scope: str, gloss_override: str = "",
         parts = [f"[{doccheck.hub_label(hub)}]({_rel(f, hub)})"]
         if tier2 and tier2 != hub:
             parts.append(f"[{_index_label(root, tier2)}]({_rel(f, tier2)})")
-        header = f"{STAMP_TOKEN} " + " › ".join(parts) + f" — {gloss}"
+        header = f"{doccheck.NAV_TOKEN} " + " › ".join(parts) + f" — {gloss}"
         rows.append({"file": f, "action": "stamp", "header": header})
     return rows
 

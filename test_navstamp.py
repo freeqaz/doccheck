@@ -93,6 +93,27 @@ def test_hub_label_comes_from_config_when_given(tmp_path):
     assert doccheck.hub_label("docs/guides/README.md") == "guides"
 
 
+def test_stamp_token_follows_the_nav_token_config(tmp_path):
+    """The stamper and doccheck's `nav` check must agree on the token, or a
+    project that renames it gets files stamped one way and linted another."""
+    root = _tree(tmp_path)
+    cfg = {"nav_token": "**Nav:**"}
+
+    rows = [r for r in navstamp.plan(str(root), "sub", config=cfg)
+            if r["action"] == "stamp"]
+    assert rows[0]["header"].startswith("**Nav:** ")
+
+    (root / "sub" / "note.md").write_text(
+        "**Nav:** [root](../README.md) — already carries its breadcrumb\n\n# note\n")
+    rows = {r["file"]: r for r in navstamp.plan(str(root), "sub", config=cfg)}
+    assert rows["sub/note.md"] == {"file": "sub/note.md", "action": "skip",
+                                   "why": "already stamped"}
+
+    with doccheck.config_applied(cfg):
+        assert navstamp.STAMP_TOKEN == "**Nav:**"
+    assert navstamp.STAMP_TOKEN == "**Hub:**"
+
+
 def test_out_of_scope_files_are_not_planned(tmp_path):
     root = _tree(tmp_path)
     planned = {r["file"] for r in navstamp.plan(str(root), "sub")}
