@@ -55,7 +55,7 @@ def _is_frozen(path: str) -> bool:
     return any(m in "/" + path for m in doccheck.FROZEN_MARKS)
 
 
-def _outlinks(root: str, path: str, known: set) -> tuple:
+def outlinks(root: str, path: str, known: set) -> tuple:
     """(resolving .md targets, link-bearing lines, lines whose link is glossed).
 
     A gloss is >=GLOSS_MIN_WORDS words of prose after the link on the same line
@@ -104,7 +104,7 @@ def _outlinks(root: str, path: str, known: set) -> tuple:
     return targets, linked, glossed
 
 
-def _bfs(sources, edges, known):
+def bfs(sources, edges, known):
     dist = {s: 0 for s in sources if s in known}
     q = deque(dist)
     while q:
@@ -165,7 +165,7 @@ def measure(root: str, scope: str = "", tier2: bool = False,
     per_index: list = []
 
     for f in files:
-        tgts, nlink, nglos = _outlinks(root, f, known)
+        tgts, nlink, nglos = outlinks(root, f, known)
         edges[f] = tgts
         outdeg[f] = len(tgts)
         for t in tgts:
@@ -180,8 +180,8 @@ def measure(root: str, scope: str = "", tier2: bool = False,
     if scope:
         active = [f for f in active if f.startswith(scope)]
 
-    hubd = _bfs(doccheck.HUBS, edges, known)
-    rootd = _bfs(doccheck.ROOTS, edges, known)
+    hubd = bfs(doccheck.HUBS, edges, known)
+    rootd = bfs(doccheck.ROOTS, edges, known)
     cost = _scan_costs(doccheck.ROOTS, edges, outdeg, known)
 
     costs = sorted(cost[f] for f in active if f in cost)

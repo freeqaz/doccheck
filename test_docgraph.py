@@ -1,11 +1,7 @@
 """Pins docgraph's navigability metrics against a synthetic tree with known shape."""
 from __future__ import annotations
 
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import docgraph  # noqa: E402
+import docgraph
 
 
 def _tree(tmp_path, files: dict) -> str:

@@ -34,8 +34,8 @@ directory before running it over a whole prefix.
 """
 from __future__ import annotations
 
-import json
 import argparse
+import json
 import os
 import posixpath
 import re
@@ -227,8 +227,8 @@ def plan(root: str, scope: str, gloss_override: str = "",
     known = set(files)
     edges: dict = {}
     for f in files:
-        edges[f], _, _ = docgraph._outlinks(root, f, known)
-    hubdists = {h: docgraph._bfs([h], edges, known)
+        edges[f], _, _ = docgraph.outlinks(root, f, known)
+    hubdists = {h: docgraph.bfs([h], edges, known)
                 for h in doccheck.HUBS if h in known}
 
     # Scope is a path prefix, not a string prefix: scope "sub" must not reach

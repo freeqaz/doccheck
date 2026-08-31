@@ -4,14 +4,12 @@ The tool edits files that several concurrent doc streams may share one working
 tree for, so these three properties are what make it safe to run at all.
 """
 
-import os
 import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import doccheck  # noqa: E402
-import navstamp  # noqa: E402
+import doccheck
+import navstamp
 
 TOOL = Path(navstamp.__file__)
 

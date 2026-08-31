@@ -475,7 +475,8 @@ def check(root: str, max_lines: int, config: dict = None) -> dict:
             m = FENCE_RE.match(s)
             if fence is None:
                 if m:
-                    fence, _ = m.group(1)[0], out.add(n)
+                    fence = m.group(1)[0]
+                    out.add(n)
             else:
                 out.add(n)
                 if m and m.group(1)[0] == fence and not s[m.end():].strip():
@@ -539,8 +540,8 @@ def check(root: str, max_lines: int, config: dict = None) -> dict:
 
             if editable:
                 for m in LINKTEXT_RE.finditer(CODESPAN_RE.sub("", line)):
-                    text, target = m.group(1), m.group(2).partition("#")[0].strip()
-                    if not target.endswith(".md") or not LATEST_TEXT_RE.search(text):
+                    ltext, target = m.group(1), m.group(2).partition("#")[0].strip()
+                    if not target.endswith(".md") or not LATEST_TEXT_RE.search(ltext):
                         continue
                     if not DATED_NAME_RE.search(os.path.basename(target)):
                         continue
@@ -552,7 +553,7 @@ def check(root: str, max_lines: int, config: dict = None) -> dict:
                         continue
                     findings["latestptr"].append({
                         "file": f, "line": i,
-                        "msg": f'"{text.strip()}" -> dated file {os.path.basename(tgt)}; '
+                        "msg": f'"{ltext.strip()}" -> dated file {os.path.basename(tgt)}; '
                                "point at the living index that pins the newest"})
 
             for m in LINK_RE.finditer(CODESPAN_RE.sub("", line)):
@@ -702,8 +703,9 @@ def check(root: str, max_lines: int, config: dict = None) -> dict:
         if os.path.basename(f) not in INDEX_NAMES:
             continue
         lines = texts[f].splitlines()
+        gfenced = fenced_lines(lines)
         for i, line in enumerate(lines, 1):
-            if i in fenced_lines(lines):
+            if i in gfenced:
                 continue
             stripped = CODESPAN_RE.sub("", line)
             md = [m for m in LINK_RE.finditer(stripped)
