@@ -750,6 +750,34 @@ CATEGORIES = ["links", "rootpath", "anchors", "assets", "index", "phrases",
               "nav", "gloss", "hubdist"]
 
 
+def parse_categories(value: str, flag: str, hint: str) -> set:
+    """Parse a comma-separated category list, rejecting unknown names.
+
+    Both --only and --fail-on name CHECK CATEGORIES, not paths, and both fail
+    SILENTLY on a name that matches none: --only selects zero checks and prints
+    "total findings: 0" -- a clean report that verified nothing -- while
+    --fail-on gates zero categories and exits 0 forever, in the flag whose whole
+    job is to make CI red. --only was hit for real: a path was passed instead of
+    a category as the verification step for a whole doc lane, vacuously green
+    every time. An empty selection must be an ERROR, not a success, so one
+    helper serves both flags and they cannot drift apart.
+
+    NOTE: validate against CATEGORIES, not findings.keys() -- findings is a
+    defaultdict holding only non-empty categories, so a clean tree would
+    spuriously reject valid names.
+
+    Raises ValueError carrying the ready-to-print message.
+    """
+    want = {c.strip() for c in value.split(",") if c.strip()}
+    unknown = want - set(CATEGORIES)
+    if unknown:
+        raise ValueError(
+            f"{flag} names no known check category: {', '.join(sorted(unknown))}\n"
+            f"  known: {', '.join(CATEGORIES)}\n"
+            f"  ({hint})")
+    return want
+
+
 def add_config_args(ap: argparse.ArgumentParser) -> None:
     """The --root/--config/--no-config trio, shared by all three tools."""
     ap.add_argument("--root", default=os.getcwd(),
@@ -769,7 +797,9 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     add_config_args(ap)
     ap.add_argument("--only", default="", help="comma-separated subset of checks")
-    ap.add_argument("--fail-on", default="", help="categories that set a non-zero exit code")
+    ap.add_argument("--fail-on", default="",
+                    help="categories that set a non-zero exit code "
+                         "(validated; empty means never gate)")
     ap.add_argument("--max-lines", type=int, default=600)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--dump-config", action="store_true",
@@ -787,28 +817,21 @@ def main() -> int:
         print(json.dumps(effective_config(), indent=2, sort_keys=True))
         return 0
 
+    # Both selections are parsed before check() runs, so a typo'd CI config
+    # fails in milliseconds instead of after a full tree walk.
+    try:
+        want = parse_categories(
+            a.only, "--only",
+            "--only filters categories, e.g. 'links,anchors' -- it does not take paths")
+        fail = parse_categories(
+            a.fail_on, "--fail-on",
+            "--fail-on gates the exit code on categories, e.g. 'links,anchors'")
+    except ValueError as exc:
+        sys.stderr.write(f"doccheck: {exc}\n")
+        return 2
+
     findings = check(a.root, a.max_lines)
-    if a.only:
-        want = {c.strip() for c in a.only.split(",") if c.strip()}
-        # --only names CHECK CATEGORIES, not paths. A name that matches no
-        # category selects zero checks, and a filter that selects zero checks
-        # prints "total findings: 0" -- a clean report that verified nothing.
-        # This was hit for real: a path was passed instead of a category as the
-        # verification step for a whole doc lane, vacuously green every time.
-        # Same defect family as a ddmin handed a set that never reproduces: an
-        # empty selection must be an ERROR, not a success.
-        # NOTE: validate against CATEGORIES, not findings.keys() -- findings is
-        # a defaultdict holding only non-empty categories, so a clean tree
-        # would spuriously reject valid names.
-        unknown = want - set(CATEGORIES)
-        if unknown:
-            sys.stderr.write(
-                f"doccheck: --only names no known check category: "
-                f"{', '.join(sorted(unknown))}\n"
-                f"  known: {', '.join(CATEGORIES)}\n"
-                f"  (--only filters categories, e.g. 'links,anchors' -- "
-                f"it does not take paths)\n")
-            return 2
+    if want:
         findings = {k: v for k, v in findings.items() if k in want}
 
     if a.json:
@@ -826,7 +849,6 @@ def main() -> int:
         total = sum(len(v) for v in findings.values())
         print(f"\ntotal findings: {total}")
 
-    fail = {c.strip() for c in a.fail_on.split(",") if c.strip()}
     return 1 if any(findings.get(c) for c in fail) else 0
 
 

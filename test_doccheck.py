@@ -408,3 +408,57 @@ def test_latestptr_skips_code_fences_and_archives(tmp_path):
         "- [old](archive/OLD.md)\n- [r](ROADMAP_2026-01-01.md)\n")
     findings = doccheck.check(str(tmp_path), max_lines=10_000)
     assert findings["latestptr"] == [], findings["latestptr"]
+
+
+# --- main(): --fail-on and --only name categories, and are validated ---------
+#
+# Exercised through the CLI because the exit code is the product: 0 clean or
+# ungated, 1 gated findings, 2 usage error. --no-config keeps a developer's
+# stray .doccheck.json out of the result.
+
+def _run(root, *args):
+    import subprocess
+    import sys
+    from pathlib import Path
+    return subprocess.run(
+        [sys.executable, str(Path(doccheck.__file__)),
+         "--root", str(root), "--no-config", *args],
+        capture_output=True, text=True)
+
+
+def test_fail_on_rejects_an_unknown_category(tmp_path):
+    """A typo'd --fail-on gates nothing and would exit 0 forever otherwise."""
+    (tmp_path / "README.md").write_text("**Hub:** root\n\n# root\n\nProse.\n")
+    p = _run(tmp_path, "--fail-on", "bogus")
+    assert p.returncode == 2, p
+    assert "bogus" in p.stderr, p.stderr
+    assert "links" in p.stderr, p.stderr
+
+
+def test_fail_on_is_validated_even_alongside_only(tmp_path):
+    """--only being valid must not excuse the flag that makes CI red."""
+    (tmp_path / "README.md").write_text("**Hub:** root\n\n# root\n\nProse.\n")
+    p = _run(tmp_path, "--only", "links", "--fail-on", "lnks")
+    assert p.returncode == 2, p
+    assert "lnks" in p.stderr, p.stderr
+
+
+def test_fail_on_a_gated_category_with_findings_exits_1(tmp_path):
+    (tmp_path / "README.md").write_text("**Hub:** root\n\n# root\n\n[x](missing.md)\n")
+    p = _run(tmp_path, "--fail-on", "links")
+    assert p.returncode == 1, p
+    assert "missing.md" in p.stdout, p.stdout
+
+
+def test_fail_on_a_gated_category_without_findings_exits_0(tmp_path):
+    """Findings elsewhere are reported but ungated -- only `fail` sets the code."""
+    (tmp_path / "README.md").write_text("**Hub:** root\n\n# root\n\n[x](missing.md)\n")
+    p = _run(tmp_path, "--fail-on", "anchors")
+    assert p.returncode == 0, p
+    assert "missing.md" in p.stdout, p.stdout
+
+
+def test_no_fail_on_never_gates(tmp_path):
+    (tmp_path / "README.md").write_text("**Hub:** root\n\n# root\n\n[x](missing.md)\n")
+    p = _run(tmp_path)
+    assert p.returncode == 0, p
